@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: rag-opensearch
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin@1234!
+      - plugins.security.disabled=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - '9201:9200'   # 9201 to avoid conflict with Project 1
+    volumes:
+      - rag-opensearch-data:/usr/share/opensearch/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    ports:
+      - '6380:6379'   # 6380 to avoid conflict with Project 1
+    volumes:
+      - rag-redis-data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rag-postgres
+    environment:
+      POSTGRES_DB: rag_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - rag-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  rag-opensearch-data:
+  rag-redis-data:
+  rag-postgres-data:

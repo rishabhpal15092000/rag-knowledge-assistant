@@ -1,93 +1,320 @@
-# RAG-Knowledge-Assistant
+# RAG Knowledge Assistant
 
+A production-ready **Retrieval-Augmented Generation (RAG)** backend for e-commerce, built with **NestJS**, **OpenSearch k-NN**, **HuggingFace Embeddings**, **Groq LLaMA 3**, **PostgreSQL**, and **Redis**. Ask natural-language questions against a curated knowledge base and receive grounded, source-cited answers.
 
+---
 
-## Getting started
+## ✨ Features
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+- **Semantic Search** — Documents are chunked, embedded, and indexed in an OpenSearch k-NN (HNSW) vector store for high-quality cosine similarity retrieval.
+- **Grounded Answers** — Groq-hosted LLaMA 3 generates responses strictly from retrieved context, minimising hallucination.
+- **Multi-Turn Conversations** — Session-aware dialogue with conversation history stored in PostgreSQL and injected into the LLM prompt for continuity.
+- **Embedding Cache** — Redis caches HuggingFace embedding vectors (SHA-256 keyed, 24 h TTL) to avoid redundant API calls.
+- **Swagger UI** — Interactive API documentation served at `/api` for quick exploration and testing.
+- **CLI Ingestion Script** — One-command bulk ingestion of Markdown knowledge-base files via `npm run ingest`.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+---
 
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## 🏗️ Architecture
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/Rishabh1283/rag-knowledge-assistant.git
-git branch -M main
-git push -uf origin main
+┌──────────────────────────────────────────────────────────────┐
+│                    NestJS Application                        │
+│                                                              │
+│  ┌──────────┐   ┌───────────┐   ┌──────────────────────┐    │
+│  │ Documents │   │    RAG    │   │    Conversation      │    │
+│  │Controller │   │Controller │   │      Service         │    │
+│  └────┬─────┘   └─────┬─────┘   └──────────┬───────────┘    │
+│       │               │                     │                │
+│  ┌────▼─────┐   ┌─────▼─────┐         ┌────▼─────┐         │
+│  │ Chunker  │   │    LLM    │         │PostgreSQL│         │
+│  │ Service  │   │  Service  │         │  (pg)    │         │
+│  └────┬─────┘   └─────┬─────┘         └──────────┘         │
+│       │               │                                      │
+│  ┌────▼────────────────▼──────┐                              │
+│  │     Vector Store Service   │                              │
+│  │  (OpenSearch k-NN / HNSW)  │                              │
+│  └────────────┬───────────────┘                              │
+│               │                                              │
+│  ┌────────────▼───────────────┐   ┌──────────┐              │
+│  │    Embedding Service       │──▶│  Redis   │              │
+│  │  (HuggingFace Inference)   │   │  Cache   │              │
+│  └────────────────────────────┘   └──────────┘              │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## Integrate with your tools
+### RAG Pipeline Flow
 
-* [Set up project integrations](https://gitlab.com/Rishabh1283/rag-knowledge-assistant/-/settings/integrations)
+1. **Ingest** — Raw documents are chunked (800 chars, 100 char overlap), batch-embedded via HuggingFace, and bulk-indexed into OpenSearch.
+2. **Query** — User question is embedded → k-NN cosine similarity search retrieves top-k chunks → chunks + conversation history are fed to Groq LLaMA 3 → grounded answer is returned with cited sources.
+3. **Persist** — Every Q&A turn is saved to PostgreSQL for session replay and auditability.
 
-## Collaborate with your team
+---
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+## 🛠️ Tech Stack
 
-## Test and Deploy
+| Layer           | Technology                                        |
+| --------------- | ------------------------------------------------- |
+| Framework       | NestJS 10 (TypeScript)                            |
+| LLM             | Groq Cloud — LLaMA 3 8B (`llama3-8b-8192`)       |
+| Embeddings      | HuggingFace Inference API (`all-MiniLM-L6-v2`, 384d) |
+| Vector Store    | OpenSearch 2.11 — k-NN plugin (HNSW / Lucene)    |
+| Database        | PostgreSQL 16 (conversation history)              |
+| Cache           | Redis 7 (embedding vector cache)                  |
+| API Docs        | Swagger / OpenAPI via `@nestjs/swagger`            |
+| Containerisation| Docker Compose                                    |
 
-Use the built-in continuous integration in GitLab.
+---
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+## 📂 Project Structure
 
-***
+```
+rag-knowledge-assistant/
+├── knowledge-base/              # Source documents (Markdown)
+│   ├── products.md              #   E-commerce product catalog
+│   ├── faq.md                   #   Customer FAQ
+│   └── policies.md              #   Store policies
+├── src/
+│   ├── main.ts                  # Bootstrap + Swagger setup
+│   ├── app.module.ts            # Root module
+│   ├── ingest.ts                # CLI ingestion script
+│   ├── config/
+│   │   └── configuration.ts     # Centralised env config
+│   ├── cache/
+│   │   ├── cache.module.ts      # Redis provider
+│   │   └── cache.service.ts     # Get / Set / Del wrapper
+│   ├── chunker/
+│   │   └── chunker.service.ts   # Paragraph → sentence → hard-split chunking
+│   ├── documents/
+│   │   ├── documents.controller.ts  # POST /documents/ingest, DELETE /documents/:id
+│   │   ├── documents.service.ts     # Chunk → embed → index orchestration
+│   │   └── dto/
+│   │       └── ingest-document.dto.ts
+│   ├── embedding/
+│   │   ├── embedding.module.ts
+│   │   └── embedding.service.ts # HuggingFace embed + Redis cache-aside
+│   ├── llm/
+│   │   ├── llm.module.ts
+│   │   └── llm.service.ts      # Groq LLaMA 3 prompt builder + completion
+│   ├── vector-store/
+│   │   ├── vector-store.module.ts
+│   │   └── vector-store.service.ts  # OpenSearch k-NN index, bulk index, search
+│   ├── conversation/
+│   │   ├── conversation.module.ts
+│   │   ├── conversation.service.ts  # PostgreSQL session CRUD
+│   │   └── entities/
+│   └── rag/
+│       ├── rag.module.ts
+│       ├── rag.controller.ts    # POST /rag/ask, GET /rag/session/:id
+│       ├── rag.service.ts       # Full RAG pipeline orchestration
+│       └── dto/
+│           └── ask-question.dto.ts
+├── docker-compose.yml           # OpenSearch + Redis + PostgreSQL
+├── package.json
+├── tsconfig.json
+├── nest-cli.json
+├── .env.example                 # Environment variable template
+└── .gitignore
+```
 
-# Editing this README
+---
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## 🚀 Getting Started
 
-## Suggestions for a good README
+### Prerequisites
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+- **Node.js** ≥ 18
+- **Docker** & **Docker Compose**
+- **Groq API Key** — [Get one free](https://console.groq.com)
+- **HuggingFace API Key** — [Get one free](https://huggingface.co/settings/tokens)
 
-## Name
-Choose a self-explaining name for your project.
+### 1. Clone & Install
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+```bash
+git clone https://gitlab.com/Rishabh1283/rag-knowledge-assistant.git
+cd rag-knowledge-assistant
+npm install
+```
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+### 2. Configure Environment
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+```bash
+cp .env.example .env
+```
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Edit `.env` and add your API keys:
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```dotenv
+GROQ_API_KEY=gsk_...
+HF_API_KEY=hf_...
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+### 3. Start Infrastructure
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+```bash
+docker compose up -d
+```
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+This launches:
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+| Service     | Container         | Port  |
+| ----------- | ----------------- | ----- |
+| OpenSearch  | `rag-opensearch`  | 9201  |
+| Redis       | `rag-redis`       | 6380  |
+| PostgreSQL  | `rag-postgres`    | 5432  |
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+### 4. Start the Server
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+```bash
+npm run start:dev
+```
 
-## License
-For open source projects, say how it is licensed.
+The server starts at **http://localhost:3001** with Swagger UI at **http://localhost:3001/api**.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+### 5. Ingest the Knowledge Base
+
+With the server running, open a second terminal:
+
+```bash
+npm run ingest
+```
+
+This reads all Markdown files from `knowledge-base/`, chunks them, generates embeddings, and indexes them in OpenSearch.
+
+### 6. Ask a Question
+
+```bash
+curl -X POST http://localhost:3001/rag/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What running shoes do you have for flat feet?"}'
+```
+
+---
+
+## 📡 API Endpoints
+
+### Documents
+
+| Method   | Endpoint                  | Description                              |
+| -------- | ------------------------- | ---------------------------------------- |
+| `POST`   | `/documents/ingest`       | Ingest a document (chunk → embed → index)|
+| `DELETE` | `/documents/:documentId`  | Remove a document from the vector store  |
+
+### RAG Assistant
+
+| Method | Endpoint                 | Description                                  |
+| ------ | ------------------------ | -------------------------------------------- |
+| `POST` | `/rag/ask`               | Ask a question against the knowledge base    |
+| `GET`  | `/rag/session/:sessionId`| Retrieve full conversation history           |
+
+#### `POST /rag/ask` — Request Body
+
+```json
+{
+  "question": "What is your return policy for electronics?",
+  "sessionId": "f47ac10b-58cc-4372-a567-0e02b2c3d479"  // optional, omit to start new session
+}
+```
+
+#### `POST /rag/ask` — Response
+
+```json
+{
+  "sessionId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "messageId": "abc123",
+  "question": "What is your return policy for electronics?",
+  "answer": "Based on the store policies, electronics can be returned within 7 days...",
+  "sources": [
+    {
+      "documentTitle": "Store Policies",
+      "source": "knowledge-base/policies.md",
+      "relevanceScore": 0.923,
+      "excerpt": "Electronics — 7-day return window from date of delivery..."
+    }
+  ],
+  "tokensUsed": 312,
+  "model": "llama3-8b-8192"
+}
+```
+
+---
+
+## ⚙️ Configuration
+
+All settings are driven by environment variables (see [`.env.example`](.env.example)):
+
+| Variable              | Default                                     | Description                        |
+| --------------------- | ------------------------------------------- | ---------------------------------- |
+| `GROQ_API_KEY`        | —                                           | Groq Cloud API key                 |
+| `GROQ_MODEL`          | `llama3-8b-8192`                            | Groq model identifier              |
+| `HF_API_KEY`          | —                                           | HuggingFace Inference API key      |
+| `HF_MODEL`            | `sentence-transformers/all-MiniLM-L6-v2`    | Embedding model                    |
+| `EMBEDDING_DIMENSIONS`| `384`                                       | Vector dimensions                  |
+| `OPENSEARCH_URL`      | `http://localhost:9201`                      | OpenSearch node URL                |
+| `OPENSEARCH_INDEX`    | `rag_documents`                              | Index name for document chunks     |
+| `POSTGRES_HOST`       | `localhost`                                  | PostgreSQL host                    |
+| `POSTGRES_PORT`       | `5432`                                       | PostgreSQL port                    |
+| `POSTGRES_DB`         | `rag_db`                                     | Database name                      |
+| `POSTGRES_USER`       | `postgres`                                   | Database user                      |
+| `POSTGRES_PASSWORD`   | `postgres`                                   | Database password                  |
+| `REDIS_HOST`          | `localhost`                                  | Redis host                         |
+| `REDIS_PORT`          | `6380`                                       | Redis port                         |
+| `RAG_TOP_K`           | `5`                                          | Number of chunks to retrieve       |
+| `RAG_HISTORY_TURNS`   | `4`                                          | Conversation turns for context     |
+| `PORT`                | `3001`                                       | Server port                        |
+
+---
+
+## 📜 Available Scripts
+
+| Script              | Command                | Description                                      |
+| ------------------- | ---------------------- | ------------------------------------------------ |
+| Development server  | `npm run start:dev`    | Start with hot-reload (watch mode)               |
+| Production build    | `npm run build`        | Compile TypeScript to `dist/`                    |
+| Production start    | `npm run start:prod`   | Run compiled output from `dist/main`             |
+| Ingest knowledge    | `npm run ingest`       | Bulk-ingest `knowledge-base/*.md` into OpenSearch|
+
+---
+
+## 📄 Knowledge Base
+
+The `knowledge-base/` directory contains the source documents that power the assistant. Currently included:
+
+| File            | Description                            |
+| --------------- | -------------------------------------- |
+| `products.md`   | E-commerce product catalog (footwear, electronics, home & kitchen, etc.) |
+| `faq.md`        | Customer frequently asked questions    |
+| `policies.md`   | Store policies (returns, shipping, warranties, etc.)                    |
+
+To add new knowledge, create a Markdown file in `knowledge-base/` and re-run `npm run ingest`.
+
+---
+
+## 🧰 Development
+
+```bash
+# Start infrastructure
+docker compose up -d
+
+# Start dev server with hot-reload
+npm run start:dev
+
+# Ingest documents (run with server up)
+npm run ingest
+
+# Build for production
+npm run build
+npm run start:prod
+```
+
+---
+
+## 📝 License
+
+This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## 👤 Author
+
+**Rishabh Pal**
